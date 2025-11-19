@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   View,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import React, { useEffect, useState } from 'react';
+import { showErrorToast, showInfoToast, showSuccessToast, showWarningToast } from '../../utils/toast';
 
 type EmailCodeFirstFactor = {
   strategy: 'email_code';
@@ -100,11 +100,11 @@ export default function SignInScreen() {
       setEmailAddressId(emailCodeFactor.emailAddressId);
       setPendingVerification(true);
       setLastSentTo(emailAddress);
-      Alert.alert('Check your email', 'We just sent you a verification code.');
+      showInfoToast('We just sent you a verification code.');
     } catch (err: any) {
       const errorMessage = parseClerkError(err);
       setError(errorMessage);
-      Alert.alert('Sign-in Error', errorMessage);
+      showErrorToast(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -141,12 +141,12 @@ export default function SignInScreen() {
       } else {
         const errorMsg = `Verification incomplete. Status: ${signInAttempt.status}`;
         setError(errorMsg);
-        Alert.alert('Verification Incomplete', errorMsg);
+        showWarningToast(errorMsg);
       }
     } catch (err: any) {
       const errorMessage = parseClerkError(err);
       setError(errorMessage);
-      Alert.alert('Verification Error', errorMessage);
+      showErrorToast(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -162,11 +162,11 @@ export default function SignInScreen() {
         strategy: 'email_code',
         emailAddressId,
       });
-      Alert.alert('Code sent', 'We just sent you a new verification code.');
+      showSuccessToast('We just sent you a new verification code.');
     } catch (err: any) {
       const errorMessage = parseClerkError(err);
       setError(errorMessage);
-      Alert.alert('Error', errorMessage);
+      showErrorToast(errorMessage);
     } finally {
       setLoading(false);
     }

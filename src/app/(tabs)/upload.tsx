@@ -9,19 +9,25 @@ import {
   TextInput,
   ScrollView,
   Image,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImageToCloudinary } from '../../services/uploadService';
 import { getCloudinaryCredentials, getCloudinaryApiCredentials } from '../../utils/storage';
 import { updateImageMetadata } from '../../services/cloudinaryService';
 import { useRouter } from 'expo-router';
+import { logger } from '../../utils/logger';
+import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toast';
 
 export default function UploadScreen() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{
+    previewUri: string;
+    uploadSource: string | File | Blob;
+  } | null>(null);
   const [hasCredentials, setHasCredentials] = useState(false);
 
   useEffect(() => {
@@ -30,6 +36,10 @@ export default function UploadScreen() {
 
   const checkCredentials = async () => {
     const creds = await getCloudinaryCredentials();
+    logger.debug('[UploadScreen] Loaded Cloudinary credentials', {
+      hasCreds: !!creds,
+      folder: creds?.folder,
+    });
     setHasCredentials(!!creds);
   };
 
@@ -37,30 +47,63 @@ export default function UploadScreen() {
     // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera roll permissions to upload images.');
+      showErrorToast('Please grant camera roll permissions to upload images.');
+      logger.warn('[UploadScreen] Image picker permission denied');
       return;
     }
 
     // Launch image picker
+    const mediaTypes = (() => {
+      const mediaTypeEnum = (ImagePicker as any).MediaType;
+      if (mediaTypeEnum?.Images) {
+        // New API expects an array of ImagePicker.MediaType values
+        return [mediaTypeEnum.Images];
+      }
+      // Fallback for older API
+      return ImagePicker.MediaTypeOptions.Images;
+    })();
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: mediaTypes as any,
       allowsEditing: true,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setSelectedImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      logger.debug('[UploadScreen] Image selected', {
+        hasFile: !!asset.file,
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+      });
+      const previewUri =
+        asset.uri ||
+        (asset as { localUri?: string }).localUri ||
+        (asset as { webPath?: string }).webPath ||
+        (asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null);
+
+      if (!previewUri) {
+        showErrorToast('Unable to read the selected image.');
+        return;
+      }
+
+      const uploadSource =
+        Platform.OS === 'web' && asset.file ? asset.file : previewUri;
+
+      setSelectedImage({ previewUri, uploadSource });
     }
   };
 
   const handleUpload = async () => {
     if (!selectedImage) {
-      Alert.alert('No image selected', 'Please select an image first.');
+      showWarningToast('Please select an image first.');
       return;
     }
 
     const credentials = await getCloudinaryCredentials();
     if (!credentials) {
+      logger.warn('[UploadScreen] No Cloudinary credentials configured');
       Alert.alert(
         'No credentials',
         'Please configure your Cloudinary credentials in Settings first.',
@@ -81,17 +124,24 @@ export default function UploadScreen() {
 
       // Upload image using unsigned upload
       const uploadResult = await uploadImageToCloudinary(
-        selectedImage,
+        selectedImage.uploadSource,
         credentials,
         description || undefined,
         tagsArray.length > 0 ? tagsArray : undefined
       );
+      logger.debug('[UploadScreen] Upload successful', {
+        publicId: uploadResult.public_id,
+        bytes: uploadResult.bytes,
+      });
 
       // If description or tags were provided and we have API credentials,
       // update metadata via API (since unsigned uploads have limited options)
       if ((description || tagsArray.length > 0) && uploadResult.public_id) {
         const apiCreds = await getCloudinaryApiCredentials();
         if (apiCreds) {
+          logger.debug('[UploadScreen] Updating metadata via API route', {
+            publicId: uploadResult.public_id,
+          });
           try {
             await updateImageMetadata(
               uploadResult.public_id,
@@ -102,25 +152,21 @@ export default function UploadScreen() {
               apiCreds.apiSecret
             );
           } catch (metaError) {
-            console.warn('Failed to update metadata, but upload succeeded:', metaError);
+            logger.warn('Failed to update metadata, but upload succeeded:', metaError);
             // Don't fail the upload if metadata update fails
           }
         }
       }
 
-      Alert.alert('Success', 'Image uploaded successfully!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            setSelectedImage(null);
-            setDescription('');
-            setTags('');
-            router.push('/(tabs)/photos');
-          },
-        },
-      ]);
+      showSuccessToast('Image uploaded successfully!');
+      setSelectedImage(null);
+      setDescription('');
+      setTags('');
+      setHasCredentials(true);
+      router.push('/(tabs)/photos');
     } catch (error) {
-      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Failed to upload image.');
+      logger.error('[UploadScreen] Upload failed', error);
+      showErrorToast(error instanceof Error ? error.message : 'Failed to upload image.');
     } finally {
       setUploading(false);
     }
@@ -156,7 +202,11 @@ export default function UploadScreen() {
 
         {selectedImage && (
           <View style={styles.imagePreview}>
-            <Image source={{ uri: selectedImage }} style={styles.image} resizeMode="contain" />
+            <Image
+              source={{ uri: selectedImage.previewUri }}
+              style={styles.image}
+              resizeMode="contain"
+            />
           </View>
         )}
 

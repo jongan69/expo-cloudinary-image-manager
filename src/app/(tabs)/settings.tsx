@@ -19,6 +19,7 @@ import {
 } from '../../utils/storage';
 import { SignOutButton } from '../../components/SignOutButton';
 import { SecureTextInput } from '../../components/SecureTextInput';
+import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toast';
 
 export default function SettingsScreen() {
   const [cloudName, setCloudName] = useState('');
@@ -55,7 +56,7 @@ export default function SettingsScreen() {
 
   const handleSave = async () => {
     if (!cloudName || !uploadPreset) {
-      Alert.alert('Error', 'Cloud Name and Upload Preset are required');
+      showWarningToast('Cloud Name and Upload Preset are required');
       return;
     }
 
@@ -75,10 +76,10 @@ export default function SettingsScreen() {
       }
 
       setHasCredentials(true);
-      Alert.alert('Success', 'Cloudinary credentials saved successfully!');
+      showSuccessToast('Cloudinary credentials saved successfully!');
     } catch (error) {
       console.error('Error saving Cloudinary credentials:', error);
-      Alert.alert('Error', 'Failed to save credentials');
+      showErrorToast('Failed to save credentials');
     } finally {
       setLoading(false);
     }
@@ -101,7 +102,7 @@ export default function SettingsScreen() {
             setApiKey('');
             setApiSecret('');
             setHasCredentials(false);
-            Alert.alert('Success', 'Credentials cleared');
+            showSuccessToast('Credentials cleared');
           },
         },
       ]

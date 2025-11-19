@@ -9,13 +9,15 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Photo } from '../../types';
-import { updateImageMetadata } from '../../services/cloudinaryService';
+import { deletePhoto, updateImageMetadata } from '../../services/cloudinaryService';
 import { getCloudinaryCredentials, getCloudinaryApiCredentials } from '../../utils/storage';
 import { getDetailImageUrl } from '../../utils/imageOptimization';
+import { showErrorToast, showSuccessToast } from '../../utils/toast';
 
 const { width } = Dimensions.get('window');
 
@@ -26,6 +28,7 @@ export default function PhotoDetailScreen() {
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const lastPhotoStringRef = useRef<string | null>(null);
 
@@ -41,7 +44,7 @@ export default function PhotoDetailScreen() {
         setTags(photoData.tags?.join(', ') || '');
       } catch (error) {
         console.error('Error parsing photo data:', error);
-        Alert.alert('Error', 'Failed to load photo details');
+        showErrorToast('Failed to load photo details');
         router.back();
       }
     }
@@ -59,7 +62,7 @@ export default function PhotoDetailScreen() {
 
   const handleSave = useCallback(async () => {
     if (!photo || !photo.public_id) {
-      Alert.alert('Error', 'Photo information is missing');
+      showErrorToast('Photo information is missing');
       return;
     }
 
@@ -105,13 +108,65 @@ export default function PhotoDetailScreen() {
       });
 
       setHasChanges(false);
-      Alert.alert('Success', 'Photo metadata updated successfully!');
+      showSuccessToast('Photo metadata updated successfully!');
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update metadata');
+      showErrorToast(error instanceof Error ? error.message : 'Failed to update metadata');
     } finally {
       setSaving(false);
     }
   }, [photo, description, tags, router]);
+
+  const performDelete = useCallback(async () => {
+    if (!photo || !photo.public_id) {
+      showErrorToast('Photo information is missing');
+      return;
+    }
+
+    const credentials = await getCloudinaryCredentials();
+    const apiCredentials = await getCloudinaryApiCredentials();
+
+    if (!credentials || !apiCredentials) {
+      Alert.alert(
+        'Credentials Required',
+        'Please configure your Cloudinary API credentials in Settings to delete images.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => router.push('/(tabs)/settings') },
+        ]
+      );
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await deletePhoto(photo.public_id, credentials, apiCredentials.apiKey, apiCredentials.apiSecret);
+      showSuccessToast('Photo deleted');
+      router.replace('/(tabs)/photos');
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : 'Failed to delete photo');
+    } finally {
+      setDeleting(false);
+    }
+  }, [photo, router]);
+
+  const confirmDelete = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('This action cannot be undone. Delete this photo?');
+      if (confirmed) {
+        performDelete();
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Delete Photo',
+      'This action cannot be undone. Are you sure you want to delete this photo?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: performDelete },
+      ]
+    );
+  }, [performDelete]);
 
   // Memoize optimized image URL - must be before early return to follow Rules of Hooks
   const optimizedImageUrl = useMemo(() => {
@@ -187,6 +242,18 @@ export default function PhotoDetailScreen() {
             <Text style={styles.infoText}>{photo.format.toUpperCase()}</Text>
           </View>
         )}
+
+        <TouchableOpacity
+          style={[styles.button, styles.deleteButton, deleting && styles.buttonDisabled]}
+          onPress={confirmDelete}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Delete Photo</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -255,6 +322,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+    marginTop: 16,
   },
   infoSection: {
     flexDirection: 'row',

@@ -19,6 +19,7 @@ import { fetchPhotos } from '../../services/cloudinaryService';
 import { getCloudinaryCredentials, getCloudinaryApiCredentials } from '../../utils/storage';
 import { getThumbnailUrl } from '../../utils/imageOptimization';
 import { getCachedPhotos, cachePhotos, clearPhotoCache } from '../../utils/photoCache';
+import { showErrorToast } from '../../utils/toast';
 
 const { width } = Dimensions.get('window');
 const imageSize = (width - 40) / 3; // 3 columns with padding
@@ -85,7 +86,7 @@ export default function PhotosScreen() {
       // Cache the results
       await cachePhotos(fetchedPhotos, folder);
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to load photos');
+      showErrorToast(error instanceof Error ? error.message : 'Failed to load photos');
     } finally {
       setLoading(false);
       setRefreshing(false);

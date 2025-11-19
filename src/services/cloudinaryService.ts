@@ -150,3 +150,45 @@ export async function updateImageMetadata(
     throw new Error(error.error || 'Failed to update metadata');
   }
 }
+
+export async function deletePhoto(
+  publicId: string,
+  credentials: CloudinaryCredentials,
+  apiKey: string,
+  apiSecret: string
+): Promise<void> {
+  let apiUrl = '/api/delete-photo';
+
+  const isNative = Platform.OS !== 'web';
+  const executionEnvironment = Constants.executionEnvironment;
+
+  if (isNative || executionEnvironment === 'standalone' || executionEnvironment === 'storeClient') {
+    const manifest = Constants.expoConfig;
+    const hostUri = manifest?.hostUri;
+
+    if (hostUri) {
+      const [host, port] = hostUri.split(':');
+      apiUrl = `http://${host}:${port || '8081'}/api/delete-photo`;
+    } else {
+      apiUrl = 'http://localhost:8081/api/delete-photo';
+    }
+  }
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      publicId,
+      cloudName: credentials.cloudName,
+      apiKey,
+      apiSecret,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete photo');
+  }
+}
