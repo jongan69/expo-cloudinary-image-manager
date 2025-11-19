@@ -324,4 +324,3 @@ This is a private project. For issues or questions, please contact the project m
 ---
 
 Built with ❤️ using Expo and React Native
-# expo-cloudinary-image-manager
