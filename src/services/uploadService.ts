@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { CloudinaryCredentials } from '../utils/storage';
 
 export interface UploadResponse {
@@ -25,7 +26,7 @@ export async function uploadImageToCloudinary(
     // Read the file as a blob for upload
     // In React Native, we need to convert the local URI to a format that can be uploaded
     const filename = imageUri.split('/').pop() || 'image.jpg';
-    const fileType = filename.split('.').pop() || 'jpg';
+    const fileType = (filename.split('.').pop() || 'jpg').toLowerCase();
     
     // Create FormData for the upload
     const formData = new FormData();
@@ -43,13 +44,18 @@ export async function uploadImageToCloudinary(
       formData.append('tags', tags.join(','));
     }
     
-    // Add the file
-    // For React Native, we need to append the file with proper type
-    formData.append('file', {
-      uri: imageUri,
-      type: `image/${fileType}`,
-      name: filename,
-    } as any);
+    // Add the file - handle platform-specific requirements
+    if (Platform.OS === 'web') {
+      const fileResponse = await fetch(imageUri);
+      const blob = await fileResponse.blob();
+      formData.append('file', blob, filename);
+    } else {
+      formData.append('file', {
+        uri: imageUri,
+        type: `image/${fileType}`,
+        name: filename,
+      } as any);
+    }
 
     // Upload to Cloudinary
     const uploadUrl = `https://api.cloudinary.com/v1_1/${credentials.cloudName}/image/upload`;
