@@ -2,6 +2,7 @@ import { CloudinaryCredentials } from '../utils/storage';
 import { Photo } from '../types';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { logger } from '../utils/logger';
 
 /**
  * Fetch photos from Cloudinary using the Admin API via Expo Router API route
@@ -12,7 +13,7 @@ export async function fetchPhotos(
   apiKey?: string,
   apiSecret?: string
 ): Promise<Photo[]> {
-  console.log('[fetchPhotos] Starting fetch with credentials:', {
+  logger.debug('[fetchPhotos] Starting fetch with credentials:', {
     hasCloudName: !!credentials.cloudName,
     hasApiKey: !!apiKey,
     hasApiSecret: !!apiSecret,
@@ -20,7 +21,7 @@ export async function fetchPhotos(
   });
   
   if (!apiKey || !apiSecret) {
-    console.error('[fetchPhotos] Missing API credentials');
+    logger.error('[fetchPhotos] Missing API credentials');
     throw new Error('API credentials required to fetch photos');
   }
 
@@ -33,7 +34,7 @@ export async function fetchPhotos(
   const isNative = Platform.OS !== 'web';
   const executionEnvironment = Constants.executionEnvironment;
   
-  console.log('[fetchPhotos] Platform detection:', {
+  logger.debug('[fetchPhotos] Platform detection:', {
     PlatformOS: Platform.OS,
     executionEnvironment,
     isNative,
@@ -55,13 +56,7 @@ export async function fetchPhotos(
     }
   }
   
-  console.log('[fetchPhotos] API URL:', apiUrl);
-  console.log('[fetchPhotos] Request body:', {
-    cloudName: credentials.cloudName,
-    folder: credentials.folder || 'Modeling',
-    hasApiKey: !!apiKey,
-    hasApiSecret: !!apiSecret,
-  });
+  logger.debug('[fetchPhotos] API URL:', apiUrl);
   
   const requestBody = {
     cloudName: credentials.cloudName,
@@ -79,38 +74,24 @@ export async function fetchPhotos(
       body: JSON.stringify(requestBody),
     });
 
-    console.log('[fetchPhotos] Response status:', response.status);
-    console.log('[fetchPhotos] Response headers:', Object.fromEntries(response.headers.entries()));
-    console.log('[fetchPhotos] Response ok:', response.ok);
-
-    // Get response text first to see what we're actually receiving
-    const responseText = await response.text();
-    console.log('[fetchPhotos] Response text (first 500 chars):', responseText.substring(0, 500));
-    console.log('[fetchPhotos] Response text length:', responseText.length);
+    logger.debug('[fetchPhotos] Response status:', response.status);
 
     if (!response.ok) {
-      console.error('[fetchPhotos] Response not OK. Status:', response.status);
-      console.error('[fetchPhotos] Response text:', responseText);
+      const responseText = await response.text();
+      logger.error('[fetchPhotos] Response not OK. Status:', response.status);
+      logger.error('[fetchPhotos] Response text:', responseText.substring(0, 200));
       throw new Error(`Failed to fetch photos: ${response.status} ${response.statusText}`);
     }
 
-    // Try to parse as JSON
-    let data;
-    try {
-      data = JSON.parse(responseText);
-      console.log('[fetchPhotos] Parsed JSON successfully. Photos count:', data.photos?.length || 0);
-    } catch (parseError) {
-      console.error('[fetchPhotos] JSON parse error:', parseError);
-      console.error('[fetchPhotos] Response text that failed to parse:', responseText);
-      throw new Error(`Invalid JSON response from server. Response: ${responseText.substring(0, 200)}`);
-    }
+    // Parse JSON response
+    const data = await response.json();
+    logger.debug('[fetchPhotos] Parsed JSON successfully. Photos count:', data.photos?.length || 0);
 
     return data.photos || [];
   } catch (error) {
-    console.error('[fetchPhotos] Fetch error:', error);
+    logger.error('[fetchPhotos] Fetch error:', error);
     if (error instanceof Error) {
-      console.error('[fetchPhotos] Error message:', error.message);
-      console.error('[fetchPhotos] Error stack:', error.stack);
+      logger.error('[fetchPhotos] Error message:', error.message);
     }
     throw error;
   }

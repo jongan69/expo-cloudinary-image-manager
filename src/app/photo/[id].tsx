@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   ScrollView,
   TextInput,
@@ -11,10 +10,12 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Photo } from '../../types';
 import { updateImageMetadata } from '../../services/cloudinaryService';
 import { getCloudinaryCredentials, getCloudinaryApiCredentials } from '../../utils/storage';
+import { getDetailImageUrl } from '../../utils/imageOptimization';
 
 const { width } = Dimensions.get('window');
 
@@ -54,9 +55,9 @@ export default function PhotoDetailScreen() {
     } else {
       setHasChanges(false);
     }
-  }, [description, tags, photo?.description, photo?.tags]);
+  }, [description, tags, photo]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!photo || !photo.public_id) {
       Alert.alert('Error', 'Photo information is missing');
       return;
@@ -94,10 +95,13 @@ export default function PhotoDetailScreen() {
       );
 
       // Update local photo state
-      setPhoto({
-        ...photo,
-        description: description || photo.description,
-        tags: tagsArray.length > 0 ? tagsArray : photo.tags,
+      setPhoto((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          description: description || current.description,
+          tags: tagsArray.length > 0 ? tagsArray : current.tags,
+        };
       });
 
       setHasChanges(false);
@@ -107,7 +111,13 @@ export default function PhotoDetailScreen() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [photo, description, tags, router]);
+
+  // Memoize optimized image URL - must be before early return to follow Rules of Hooks
+  const optimizedImageUrl = useMemo(() => {
+    if (!photo?.url) return '';
+    return getDetailImageUrl(photo.url, width);
+  }, [photo?.url]);
 
   if (!photo) {
     return (
@@ -121,7 +131,14 @@ export default function PhotoDetailScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.imageContainer}>
-        <Image source={{ uri: photo.url }} style={styles.image} resizeMode="contain" />
+        <Image
+          source={{ uri: optimizedImageUrl }}
+          style={styles.image}
+          contentFit="contain"
+          transition={200}
+          cachePolicy="memory-disk"
+          placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+        />
       </View>
 
       <View style={styles.content}>

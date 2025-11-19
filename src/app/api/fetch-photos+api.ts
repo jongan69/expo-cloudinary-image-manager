@@ -1,12 +1,20 @@
 import { v2 as cloudinary } from 'cloudinary';
 
+// Conditional logging for API routes
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const apiLogger = {
+  log: (...args: any[]) => isDevelopment && console.log(...args),
+  error: (...args: any[]) => console.error(...args), // Always log errors
+  warn: (...args: any[]) => isDevelopment && console.warn(...args),
+};
+
 // Helper function to fetch photos from Cloudinary folder
 async function getPhotosFromFolder(
   cloudinaryInstance: typeof cloudinary,
   folderName: string
 ) {
   try {
-    console.log(`[API] Searching for images in folder: ${folderName}`);
+    apiLogger.log(`[API] Searching for images in folder: ${folderName}`);
     
     // Try different search expressions (similar to Netlify function)
     const expressions = [
@@ -20,7 +28,7 @@ async function getPhotosFromFolder(
     
     for (const expression of expressions) {
       try {
-        console.log(`[API] Trying expression: ${expression}`);
+        apiLogger.log(`[API] Trying expression: ${expression}`);
         result = await cloudinaryInstance.search
           .expression(expression)
           .sort_by('created_at', 'desc')
@@ -29,31 +37,31 @@ async function getPhotosFromFolder(
           .with_field('tags') // Ensure tags are included in results
           .execute();
         
-        console.log(`[API] Found ${result.resources?.length || 0} resources with expression: ${expression}`);
+        apiLogger.log(`[API] Found ${result.resources?.length || 0} resources with expression: ${expression}`);
         if (result.resources && result.resources.length > 0) {
           break;
         }
       } catch (err) {
-        console.log(`[API] Expression ${expression} failed:`, err instanceof Error ? err.message : String(err));
+        apiLogger.log(`[API] Expression ${expression} failed:`, err instanceof Error ? err.message : String(err));
         lastError = err;
         continue;
       }
     }
     
     if (!result || !result.resources || result.resources.length === 0) {
-      console.warn('[API] No images found. Trying to list all resources...');
+      apiLogger.warn('[API] No images found. Trying to list all resources...');
       // Try listing all resources to see what's available
       try {
         const allResources = await cloudinaryInstance.search
           .expression('resource_type:image')
           .max_results(10)
           .execute();
-        console.log(`[API] Found ${allResources.resources?.length || 0} total images in account`);
+        apiLogger.log(`[API] Found ${allResources.resources?.length || 0} total images in account`);
         if (allResources.resources && allResources.resources.length > 0) {
-          console.log('[API] Sample public_ids:', allResources.resources.slice(0, 3).map((r: any) => r.public_id));
+          apiLogger.log('[API] Sample public_ids:', allResources.resources.slice(0, 3).map((r: any) => r.public_id));
         }
       } catch (listError) {
-        console.error('[API] Failed to list resources:', listError);
+        apiLogger.error('[API] Failed to list resources:', listError);
       }
       
       if (lastError) {
@@ -92,7 +100,7 @@ async function getPhotosFromFolder(
             }
           } catch (fetchError) {
             // If direct fetch fails, continue with search result (or null)
-            console.warn(`[API] Could not fetch metadata directly for ${resource.public_id}:`, 
+            apiLogger.warn(`[API] Could not fetch metadata directly for ${resource.public_id}:`, 
               fetchError instanceof Error ? fetchError.message : String(fetchError));
           }
         }
@@ -101,7 +109,8 @@ async function getPhotosFromFolder(
         if (description && typeof description === 'string') {
           try {
             description = decodeURIComponent(description);
-          } catch (e) {
+          } catch (decodeError) {
+            apiLogger.warn('[API] Failed to decode description:', decodeError);
             // If decoding fails, use as-is
           }
         }
@@ -127,16 +136,14 @@ async function getPhotosFromFolder(
 
     return photos;
   } catch (error) {
-    console.error('[API] Error fetching photos from Cloudinary:', error);
+    apiLogger.error('[API] Error fetching photos from Cloudinary:', error);
     throw error;
   }
 }
 
 // Expo Router API route handler
 export async function POST(request: Request) {
-  console.log('[API] fetch-photos POST request received');
-  console.log('[API] Request URL:', request.url);
-  console.log('[API] Request method:', request.method);
+  apiLogger.log('[API] fetch-photos POST request received');
   
   // Handle CORS headers
   const headers = {
@@ -156,8 +163,7 @@ export async function POST(request: Request) {
   
   try {
     const body = await request.json();
-    console.log('[API] Request body:', body);
-    console.log('[API] Request body received:', {
+    apiLogger.log('[API] Request body received:', {
       hasCloudName: !!body.cloudName,
       hasApiKey: !!body.apiKey,
       hasApiSecret: !!body.apiSecret,
@@ -167,7 +173,7 @@ export async function POST(request: Request) {
     const { cloudName, apiKey, apiSecret, folder } = body;
 
     if (!cloudName || !apiKey || !apiSecret) {
-      console.error('[API] Missing required credentials:', {
+      apiLogger.error('[API] Missing required credentials:', {
         cloudName: !!cloudName,
         apiKey: !!apiKey,
         apiSecret: !!apiSecret,
@@ -179,7 +185,7 @@ export async function POST(request: Request) {
     }
 
     // Configure Cloudinary with user's credentials from POST body
-    console.log('[API] Configuring Cloudinary with cloudName:', cloudName);
+    apiLogger.log('[API] Configuring Cloudinary with cloudName:', cloudName);
     cloudinary.config({
       cloud_name: cloudName,
       api_key: apiKey,
@@ -187,21 +193,21 @@ export async function POST(request: Request) {
     });
 
     const folderName = folder || 'Modeling';
-    console.log(`[API] Cloudinary config - cloud_name: ${cloudinary.config().cloud_name}`);
+    apiLogger.log(`[API] Cloudinary config - cloud_name: ${cloudinary.config().cloud_name}`);
     
     const photos = await getPhotosFromFolder(cloudinary, folderName);
     
-    console.log(`[API] Returning ${photos.length} photos`);
+    apiLogger.log(`[API] Returning ${photos.length} photos`);
     
     return Response.json(
       { photos },
       { status: 200, headers }
     );
   } catch (error) {
-    console.error('[API] Error fetching photos:', error);
+    apiLogger.error('[API] Error fetching photos:', error);
     if (error instanceof Error) {
-      console.error('[API] Error message:', error.message);
-      console.error('[API] Error stack:', error.stack);
+      apiLogger.error('[API] Error message:', error.message);
+      apiLogger.error('[API] Error stack:', error.stack);
     }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return Response.json(

@@ -77,6 +77,7 @@ export default function SettingsScreen() {
       setHasCredentials(true);
       Alert.alert('Success', 'Cloudinary credentials saved successfully!');
     } catch (error) {
+      console.error('Error saving Cloudinary credentials:', error);
       Alert.alert('Error', 'Failed to save credentials');
     } finally {
       setLoading(false);
